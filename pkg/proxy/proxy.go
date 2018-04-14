@@ -40,7 +40,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.manager.Get(bucket).Take()
+	err := s.manager.Get(bucket).Reserve()
 
 	if err != nil {
 		switch err {
@@ -59,7 +59,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	trace := &httptrace.ClientTrace{
 		GotConn: func(info httptrace.GotConnInfo) {
-			s.manager.Get(bucket).Release()
+			s.manager.Get(bucket).Use()
 		},
 	}
 
@@ -127,7 +127,7 @@ func NewTransport(manager *ratelimit.Manager) http.RoundTripper {
 
 		c, err := defaultDialContext(ctx, network, addr)
 		if err != nil {
-			manager.Get(bucket).Release()
+			manager.Get(bucket).Use()
 		}
 
 		return c, err

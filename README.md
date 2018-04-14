@@ -39,4 +39,3 @@ rl-proxy -h
   - [ ] Number of requests running;
   - [ ] Histogram of requests response time;
   - [ ] General Go statistics;
-- [ ] Rename `Take` and `Release` to better names;

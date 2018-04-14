@@ -22,96 +22,58 @@ type Config struct {
 type Limiter struct {
 	sync.Mutex
 
-	Config Config
+	config Config
 
-	lastSlotAt time.Time
+	currentToExpire time.Time
 
-	conns int
 	queue *Queue
 
-	value int
+	toExpire int
+	slots    int
 }
 
 // NewLimiter ...
 func NewLimiter(c Config) *Limiter {
-	total := c.Burst + c.Queue
-
 	return &Limiter{
-		Config: c,
+		config: c,
 		queue:  NewQueue(),
-		value:  total,
+		slots:  c.Burst + c.Queue,
 	}
 }
 
-// Release ...
-func (l *Limiter) Release() {
+// Use ...
+func (l *Limiter) Use() {
 	l.Lock()
 
-	now := time.Now()
-
-	if l.lastSlotAt.IsZero() {
-		l.lastSlotAt = now
+	if l.currentToExpire.IsZero() {
+		// first element to expire
+		l.currentToExpire = time.Now()
 	}
 
-	l.conns++
+	l.toExpire++
 
 	l.Unlock()
 }
 
-// Take ...
-func (l *Limiter) Take() error {
-	calc := func() {
-		if l.conns == 0 {
-			if !l.lastSlotAt.IsZero() {
-				// reset last slot at
-				l.lastSlotAt = time.Time{}
-			}
-			return
-		}
-
-		now := time.Now()
-
-		add := int(now.Sub(l.lastSlotAt) / l.Config.Rate)
-		add = minInt(add, l.conns)
-		if add == 0 {
-			return
-		}
-
-		l.lastSlotAt = l.lastSlotAt.Add(time.Duration(add) * l.Config.Rate)
-
-		l.conns -= add
-
-		l.value += add
-
-		l.queue.Free(add)
-	}
-
+// Reserve ...
+func (l *Limiter) Reserve() error {
 	l.Lock()
 
-	calc()
+	l.checkExpired()
 
-	if l.value == 0 {
+	if l.slots == 0 {
 		l.Unlock()
 		return ErrNoSlotsAvailable
 	}
 
-	if l.value <= l.Config.Queue {
+	l.slots--
+
+	if l.slots < l.config.Queue {
 		c := l.queue.Add()
 
 		if l.queue.Total() == 1 {
-			go func() {
-				for l.queue.Total() > 0 {
-					time.Sleep(l.Config.Rate)
-
-					l.Lock()
-					calc()
-					l.Unlock()
-				}
-
-			}()
+			go l.checkQueueExpiredLoop()
 		}
-
-		l.value--
 
 		l.Unlock()
 
@@ -120,11 +82,43 @@ func (l *Limiter) Take() error {
 		return nil
 	}
 
-	l.value--
-
 	l.Unlock()
 
 	return nil
+}
+
+func (l *Limiter) checkExpired() {
+	if l.toExpire == 0 {
+		return
+	}
+
+	expired := int(time.Now().Sub(l.currentToExpire) / l.config.Rate)
+	expired = minInt(expired, l.toExpire)
+	if expired == 0 {
+		return
+	}
+
+	l.currentToExpire = l.currentToExpire.Add(time.Duration(expired) * l.config.Rate)
+
+	l.toExpire -= expired
+	if l.toExpire == 0 {
+		// reset currentToExpire value
+		l.currentToExpire = time.Time{}
+	}
+
+	l.slots += expired
+
+	l.queue.Free(expired)
+}
+
+func (l *Limiter) checkQueueExpiredLoop() {
+	for l.queue.Total() > 0 {
+		time.Sleep(l.config.Rate)
+
+		l.Lock()
+		l.checkExpired()
+		l.Unlock()
+	}
 }
 
 // Manager ...
@@ -132,21 +126,21 @@ type Manager struct {
 	Config Config
 
 	sync.Mutex
-	buckets map[string]*Limiter
+	limiters map[string]*Limiter
 }
 
 // Get ...
 func (m *Manager) Get(b string) *Limiter {
 	m.Lock()
 
-	if m.buckets == nil {
-		m.buckets = make(map[string]*Limiter)
+	if m.limiters == nil {
+		m.limiters = make(map[string]*Limiter)
 	}
 
-	l, ok := m.buckets[b]
+	l, ok := m.limiters[b]
 	if !ok {
 		l = NewLimiter(m.Config)
-		m.buckets[b] = l
+		m.limiters[b] = l
 	}
 
 	m.Unlock()
