@@ -1,5 +1,7 @@
 # Rate Limit
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/esnunes/ratelimit)](https://goreportcard.com/report/github.com/esnunes/ratelimit)
+
 ## Library
 
 ## Reverse Proxy
@@ -39,3 +41,11 @@ rl-proxy -h
   - [ ] Number of requests running;
   - [ ] Histogram of requests response time;
   - [ ] General Go statistics;
+
+## License
+
+ratelimit is licensed under the MIT license. Check the [LICENSE](LICENSE) file for details.
+
+## Author
+
+[Eduardo Nunes](http://nunes.io)
