@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/esnunes/ratelimit/pkg/util"
 )
 
 var (
@@ -93,7 +95,7 @@ func (l *Limiter) checkExpired() {
 	}
 
 	expired := int(time.Now().Sub(l.currentToExpire) / l.config.Rate)
-	expired = minInt(expired, l.toExpire)
+	expired = util.MinInt(expired, l.toExpire)
 	if expired == 0 {
 		return
 	}
@@ -146,11 +148,4 @@ func (m *Manager) Get(b string) *Limiter {
 	m.Unlock()
 
 	return l
-}
-
-func minInt(a, b int) int {
-	if a > b {
-		return b
-	}
-	return a
 }
